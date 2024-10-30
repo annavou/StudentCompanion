@@ -63,7 +63,7 @@
             <WebmailPlaceholder/>
             {#each notifications as notification (notification.id)}
                 <div animate:flip={{ duration: 500, easing: quintOut }}>
-                    {#if $toggles.all || ($toggles.universis && notification.type === 'universis') || ($toggles.elearning && notification.type === 'elearning') || ($toggles.elSystem && notification.type === 'system')}
+                    {#if $toggles.all || ($toggles.webmail && notification.type === 'webmail') || ($toggles.universis && notification.type === 'universis') || ($toggles.elearning && notification.type === 'elearning')}
                         <AppCard padding>
                             <Notification {notification}/>
                         </AppCard>
