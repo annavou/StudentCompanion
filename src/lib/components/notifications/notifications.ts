@@ -32,90 +32,6 @@ function cleanUpFullMessage(fullMessage: string) {
 
 }
 
-async function getElearningNotifications(refresh: boolean = false) {
-    const body_Read = [
-        {
-            "index": 0,
-            "methodname": "core_message_get_messages",
-            "args": {
-                "useridto": userID,
-                "useridfrom": "0",
-                "type": "notifications",
-                "newestfirst": 1,
-                "read": 1,
-                "limitfrom": 0,
-                "limitnum": 21
-            }
-        }
-    ];
-
-    const body_Unread = [
-        {
-            "index": 0,
-            "methodname": "core_message_get_messages",
-            "args": {
-                "useridto": userID,
-                "useridfrom": "0",
-                "type": "notifications",
-                "newestfirst": 1,
-                "read": 0,
-                "limitfrom": 0,
-                "limitnum": 21
-            }
-        }
-    ];
-    const options = {forceFresh: refresh, lifetime: 60 * 15}
-    const response_Read = await neoElearningGet(body_Read, options);
-    const response_Unread = await neoElearningGet(body_Unread, options);
-
-    let messages: elearningMessages;
-
-    if (!response_Read.error){
-        messages = response_Read.data;
-    }
-    else {
-        messages = {
-            messages: []
-        }
-    }
-
-    if (!response_Unread.error){
-        messages.messages = messages.messages.concat(response_Unread.data.messages);
-    }
-
-    console.log(messages.messages);
-
-    let cleanMessages = messages.messages.map((message) => {
-        return {
-            type: message.useridfrom > 500 ? "elearning" : "system",
-            subject: message.subject,
-            body: cleanUpFullMessage(message.fullmessage),
-            url: message.contexturl,
-            sender: message.useridfrom > 500 ? message.userfromfullname : "eLearning System",
-            dateReceived: new Date(message.timecreated * 1000),
-            id: message.id
-        };});
-    return cleanMessages;
-}
-
-async function getUniversisNotifications(refresh: boolean = false) {
-    const options = {forceFresh: refresh, lifetime: 60 * 60 * 24}
-    let messages: messages = await neoUniversisGet("students/me/messages?$top=3", options);//&$filter=dateReceived eq null");
-
-
-    let cleanMessages = messages.value.map((message) => {
-        return {
-            type: "universis",
-            subject: message.subject ? message.subject : "Universis",
-            body: message.body.toString().startsWith("<") ? message.subject : message.body.toString(),
-            url: message.url,
-            sender: "Universis",
-            dateReceived: new Date(message.dateReceived),
-            id: message.id
-        };});
-    return cleanMessages;
-}
-
 async function getWebmailNotifications(refresh: boolean = false) {
     const options = {forceFresh: refresh, lifetime: 60 * 15}
 
@@ -124,7 +40,7 @@ async function getWebmailNotifications(refresh: boolean = false) {
         const messages = await neoWebmailInbox(options);
         if (messages.error) return [];
         
-        let cleanMessages = messages.received.map((message) => {
+        let cleanMessages = messages.received.map((message: any) => {
         const {
             attachments,
             body,
@@ -157,6 +73,30 @@ async function getWebmailNotifications(refresh: boolean = false) {
 
 }
 
+// filter out the elearning and universis notifications from the webmail ones, and return them seperatly
+function filterWebmailNotifications(webmailNotifications: any[]){
+    const notifications: {webmail: any[]; elearning: any[]; universis: any[]} = {
+        webmail: [],
+        elearning: [],
+        universis: []
+    };
+
+    for (const webmailNotification of webmailNotifications){
+        console.log(webmailNotification);
+        if (webmailNotification.sender.includes("(μέσω elearning_auth_gr)")){
+            webmailNotification.type = "elearning";
+            notifications.elearning.push(webmailNotification);
+        } else if (webmailNotification.sender.includes("sis-no-reply@auth.gr")){
+            webmailNotification.type = "universis";
+            notifications.universis.push(webmailNotification);
+        }
+         else {
+            notifications.webmail.push(webmailNotification);
+        }
+    }
+    return notifications;
+}
+
 type options = {
     refresh?: boolean | undefined;
     days?: number | undefined;
@@ -165,11 +105,12 @@ type options = {
 export async function gatherNotifications(options?: options){
     if (!options) options = {};
 
-    // let webmailNotifications = await getWebmailNotifications(options.refresh); TODO: Reimplement
-    // let elearningNotifications = await getElearningNotifications(options.refresh);
-    const webmailNotifications: ConcatArray<any> = get(webmailAuthenticated) ? await getWebmailNotifications(options.refresh): [];
-    const elearningNotifications: any[] = [];
-    let universisNotifications = await getUniversisNotifications(options.refresh);
+    let webmailNotifications: ConcatArray<any> = get(webmailAuthenticated) ? await getWebmailNotifications(options.refresh): [];
+
+    const filteredNotifications = filterWebmailNotifications(webmailNotifications as any[]);
+    webmailNotifications = filteredNotifications.webmail;
+    const elearningNotifications = filteredNotifications.elearning;
+    const universisNotifications = filteredNotifications.universis;
 
     let notifications = elearningNotifications.concat(webmailNotifications)
                         .filter((notification, index, self) => {
@@ -177,7 +118,7 @@ export async function gatherNotifications(options?: options){
                                 const hasMatchingElearning = self.some((otherNotification, otherIndex) => {
                                     return (
                                         otherIndex !== index &&
-                                        ( otherNotification.type === "elearning" || otherNotification.type === "system" ) &&
+                                        otherNotification.type === "elearning" &&
                                         otherNotification.subject === notification.subject
                                     );
                                 });
@@ -189,7 +130,7 @@ export async function gatherNotifications(options?: options){
                         .sort((a, b) => b.dateReceived.getTime() - a.dateReceived.getTime());
 
     if (options.days){
-        notifications = notifications.filter((notification) => Math.floor((new Date().getTime() - notification.dateReceived.getTime()) / 1000) <= options.days * 86400);
+        notifications = notifications.filter((notification) => Math.floor((new Date().getTime() - notification.dateReceived.getTime()) / 1000) <= options.days! * 86400);
     }
     return notifications;
 }
