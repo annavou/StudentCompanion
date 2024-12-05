@@ -197,6 +197,12 @@
 			{#if stats.grade}
 			<canvas id="statChart" />
 			<ion-list>
+				{#if stats.top10Percent}
+					<ion-item lines ="full">
+						<ion-label>{$t("course.topPercentage")}</ion-label>
+						<ion-text slot="end">{$t("course.top10Percent")}</ion-text>
+					</ion-item>
+				{/if}	
 				<ion-item lines ="full">
 					<ion-label>{$t("course.graded_students")}</ion-label>
 					<ion-text slot="end">{stats.totalStudents}</ion-text>
